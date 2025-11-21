@@ -1,3 +1,13 @@
+<!--
+Original uploaded file: /mnt/data/index.html
+This file is a modified frontend-only version that fetches Google Drive folder pages
+and extracts the JSON used by Drive to build a dynamic folder+file view WITHOUT
+using Google API keys or a backend.
+
+IMPORTANT: This scraping method relies on Google Drive's public HTML structure and
+may break if Google changes it. It is the best frontend-only approach available.
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,709 +17,91 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --primary: #2c3e50;
-            --secondary: #3498db;
-            --accent: #e74c3c;
-            --light: #ecf0f1;
-            --dark: #2c3e50;
-            --success: #2ecc71;
-            --warning: #f39c12;
-            --shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            --transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-            --glass: rgba(255, 255, 255, 0.1);
-            --glass-dark: rgba(0, 0, 0, 0.1);
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Poppins', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #2c3e50 100%);
-            background-attachment: fixed;
-            color: white;
-            line-height: 1.7;
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 25px;
-        }
-
-        /* Header Styles */
-        header {
-            background: var(--glass);
-            backdrop-filter: blur(20px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 1.2rem 0;
-            position: sticky;
-            top: 0;
-            z-index: 1000;
-        }
-
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .logo-icon {
-            width: 50px;
-            height: 50px;
-            background: linear-gradient(135deg, #3498db, #2c3e50);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: var(--shadow);
-        }
-
-        .logo-icon i {
-            font-size: 1.5rem;
-            color: white;
-        }
-
-        .logo-text h1 {
-            font-size: 1.6rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, #fff, #e0e0e0);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .logo-text span {
-            color: #f39c12;
-        }
-
-        /* Hero Section */
-        .hero {
-            padding: 5rem 0 3rem;
-            text-align: center;
-            position: relative;
-        }
-
-        .hero::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: radial-gradient(circle at center, rgba(255,255,255,0.1) 0%, transparent 70%);
-            pointer-events: none;
-        }
-
-        .hero h2 {
-            font-size: 3.5rem;
-            margin-bottom: 1.2rem;
-            font-weight: 700;
-            text-shadow: 0 5px 15px rgba(0,0,0,0.3);
-            animation: fadeInDown 1s ease;
-        }
-
-        .hero p {
-            font-size: 1.3rem;
-            max-width: 700px;
-            margin: 0 auto 3rem;
-            opacity: 0.9;
-            animation: fadeInUp 1s ease;
-            line-height: 1.8;
-        }
-
-        /* Main Content */
-        .main-content {
-            padding: 0 0 4rem;
-            min-height: 60vh;
-        }
-
-        .content-wrapper {
-            background: var(--glass);
-            backdrop-filter: blur(20px);
-            border-radius: 25px;
-            padding: 3rem;
-            box-shadow: var(--shadow);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            animation: slideUp 0.8s ease;
-        }
-
-        .breadcrumb {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 2.5rem;
-            font-size: 1rem;
-            animation: fadeIn 0.6s ease;
-        }
-
-        .breadcrumb a {
-            color: rgba(255, 255, 255, 0.8);
-            text-decoration: none;
-            transition: var(--transition);
-            padding: 8px 16px;
-            border-radius: 20px;
-            background: var(--glass-dark);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .breadcrumb a:hover {
-            background: rgba(255, 255, 255, 0.2);
-            transform: translateY(-2px);
-        }
-
-        .breadcrumb i {
-            font-size: 0.8rem;
-            color: rgba(255, 255, 255, 0.5);
-        }
-
-        /* Folders Grid */
-        .folders-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 30px;
-            margin-bottom: 3rem;
-        }
-
-        .folder-card {
-            background: linear-gradient(135deg, var(--glass), var(--glass-dark));
-            border-radius: 20px;
-            overflow: hidden;
-            box-shadow: var(--shadow);
-            transition: var(--transition);
-            cursor: pointer;
-            position: relative;
-            animation: fadeInUp 0.6s ease;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-        }
-
-        .folder-card:hover {
-            transform: translateY(-15px) scale(1.03);
-            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
-            border-color: rgba(255, 255, 255, 0.3);
-        }
-
-        .folder-icon {
-            background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
-            height: 160px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .folder-icon i {
-            font-size: 4.5rem;
-            color: white;
-            filter: drop-shadow(3px 3px 6px rgba(0,0,0,0.3));
-            z-index: 2;
-        }
-
-        .folder-icon::before {
-            content: '';
-            position: absolute;
-            top: -100%;
-            left: -100%;
-            width: 300%;
-            height: 300%;
-            background: linear-gradient(45deg, transparent, rgba(255,255,255,0.2), transparent);
-            transform: rotate(45deg);
-            animation: shine 4s infinite;
-        }
-
-        .folder-info {
-            padding: 25px;
-            text-align: center;
-        }
-
-        .folder-info h3 {
-            font-size: 1.4rem;
-            margin-bottom: 10px;
-            font-weight: 600;
-            color: white;
-        }
-
-        .folder-info p {
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 0.95rem;
-        }
-
-        .file-count {
-            position: absolute;
-            top: 15px;
-            right: 15px;
-            background: var(--accent);
-            color: white;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.9rem;
-            font-weight: bold;
-            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
-            z-index: 3;
-        }
-
-        /* Files Grid */
-        .files-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 25px;
-        }
-
-        .file-card {
-            background: linear-gradient(135deg, var(--glass), var(--glass-dark));
-            border-radius: 20px;
-            overflow: hidden;
-            box-shadow: var(--shadow);
-            transition: var(--transition);
-            cursor: pointer;
-            animation: fadeInUp 0.6s ease;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-        }
-
-        .file-card:hover {
-            transform: translateY(-12px) scale(1.05);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
-            border-color: rgba(255, 255, 255, 0.3);
-        }
-
-        .file-icon {
-            background: linear-gradient(135deg, #f1c40f 0%, #f39c12 100%);
-            height: 140px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .file-icon i {
-            font-size: 3.5rem;
-            color: white;
-            filter: drop-shadow(3px 3px 6px rgba(0,0,0,0.3));
-        }
-
-        .file-icon::before {
-            content: '';
-            position: absolute;
-            top: -100%;
-            left: -100%;
-            width: 300%;
-            height: 300%;
-            background: linear-gradient(45deg, transparent, rgba(255,255,255,0.2), transparent);
-            transform: rotate(45deg);
-            animation: shine 4s infinite;
-        }
-
-        .file-info {
-            padding: 25px;
-            text-align: center;
-        }
-
-        .file-info h4 {
-            font-size: 1.1rem;
-            margin-bottom: 8px;
-            color: white;
-            font-weight: 600;
-            line-height: 1.4;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-
-        .file-info p {
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 0.85rem;
-        }
-
-        /* Loading Animation */
-        .loading {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 400px;
-            flex-direction: column;
-            gap: 25px;
-        }
-
-        .spinner {
-            width: 70px;
-            height: 70px;
-            border: 4px solid rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-            border-top-color: var(--secondary);
-            animation: spin 1.2s linear infinite;
-        }
-
-        .loading-text {
-            color: white;
-            font-size: 1.3rem;
-            font-weight: 500;
-        }
-
-        .loading-subtext {
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 1rem;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        @keyframes fadeInUp {
-            from { 
-                opacity: 0; 
-                transform: translateY(40px) scale(0.95);
-            }
-            to { 
-                opacity: 1; 
-                transform: translateY(0) scale(1);
-            }
-        }
-
-        @keyframes fadeInDown {
-            from { 
-                opacity: 0; 
-                transform: translateY(-40px) scale(0.95);
-            }
-            to { 
-                opacity: 1; 
-                transform: translateY(0) scale(1);
-            }
-        }
-
-        @keyframes slideUp {
-            from { 
-                opacity: 0; 
-                transform: translateY(60px) scale(0.9);
-            }
-            to { 
-                opacity: 1; 
-                transform: translateY(0) scale(1);
-            }
-        }
-
-        @keyframes shine {
-            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
-            100% { transform: translateX(200%) translateY(200%) rotate(45deg); }
-        }
-
-        /* Footer */
-        footer {
-            background: var(--glass);
-            backdrop-filter: blur(20px);
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 3rem 0 1.5rem;
-            margin-top: 4rem;
-        }
-
-        .footer-content {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 40px;
-            margin-bottom: 2.5rem;
-        }
-
-        .footer-section h3 {
-            font-size: 1.3rem;
-            margin-bottom: 1.2rem;
-            position: relative;
-            padding-bottom: 12px;
-            font-weight: 600;
-        }
-
-        .footer-section h3::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 50px;
-            height: 3px;
-            background: linear-gradient(135deg, var(--secondary), var(--primary));
-            border-radius: 2px;
-        }
-
-        .footer-section p {
-            margin-bottom: 1.2rem;
-            font-size: 1rem;
-            opacity: 0.8;
-            line-height: 1.6;
-        }
-
-        .footer-section ul {
-            list-style: none;
-        }
-
-        .footer-section ul li {
-            margin-bottom: 12px;
-        }
-
-        .footer-section ul li a {
-            color: rgba(255, 255, 255, 0.8);
-            text-decoration: none;
-            transition: var(--transition);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .footer-section ul li a:hover {
-            color: var(--secondary);
-            transform: translateX(5px);
-        }
-
-        .social-links {
-            display: flex;
-            gap: 15px;
-            margin-top: 1.5rem;
-        }
-
-        .social-links a {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 45px;
-            height: 45px;
-            background: var(--glass-dark);
-            border-radius: 12px;
-            color: white;
-            transition: var(--transition);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .social-links a:hover {
-            background: var(--secondary);
-            transform: translateY(-5px) scale(1.1);
-            box-shadow: 0 10px 20px rgba(52, 152, 219, 0.3);
-        }
-
-        .footer-bottom {
-            text-align: center;
-            padding-top: 2rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            font-size: 0.95rem;
-            color: rgba(255, 255, 255, 0.7);
-        }
-
-        /* Responsive Design */
-        @media (max-width: 1200px) {
-            .container {
-                max-width: 1140px;
-            }
-        }
-
-        @media (max-width: 992px) {
-            .folders-grid, .files-grid {
-                grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            }
-            
-            .hero h2 {
-                font-size: 3rem;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .header-content {
-                flex-direction: column;
-                gap: 20px;
-            }
-
-            .hero h2 {
-                font-size: 2.5rem;
-            }
-
-            .content-wrapper {
-                padding: 2rem;
-            }
-
-            .folders-grid, .files-grid {
-                grid-template-columns: 1fr;
-                gap: 20px;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .hero {
-                padding: 3rem 0 2rem;
-            }
-
-            .hero h2 {
-                font-size: 2.2rem;
-            }
-
-            .content-wrapper {
-                padding: 1.5rem;
-                border-radius: 20px;
-            }
-        }
-
-        /* Action Buttons */
-        .action-buttons {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 25px;
-            flex-wrap: wrap;
-        }
-
-        .action-btn {
-            background: linear-gradient(135deg, var(--secondary), var(--primary));
-            color: white;
-            border: none;
-            padding: 14px 28px;
-            border-radius: 15px;
-            cursor: pointer;
-            transition: var(--transition);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: 500;
-            font-size: 1rem;
-            box-shadow: 0 8px 20px rgba(52, 152, 219, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .action-btn:hover {
-            transform: translateY(-3px) scale(1.05);
-            box-shadow: 0 12px 25px rgba(52, 152, 219, 0.4);
-        }
-
-        .action-btn.secondary {
-            background: linear-gradient(135deg, #95a5a6, #7f8c8d);
-        }
-
-        .action-btn.secondary:hover {
-            box-shadow: 0 12px 25px rgba(149, 165, 166, 0.4);
-        }
-
-        /* Empty States */
-        .empty-state {
-            text-align: center;
-            padding: 5rem 2rem;
-            color: rgba(255, 255, 255, 0.8);
-            animation: fadeInUp 0.6s ease;
-        }
-
-        .empty-state i {
-            font-size: 5rem;
-            margin-bottom: 2rem;
-            color: rgba(255, 255, 255, 0.3);
-        }
-
-        .empty-state h3 {
-            font-size: 1.8rem;
-            margin-bottom: 1.2rem;
-            color: white;
-            font-weight: 600;
-        }
-
-        .empty-state p {
-            font-size: 1.1rem;
-            line-height: 1.7;
-            max-width: 600px;
-            margin: 0 auto 2.5rem;
-        }
-
-        /* PDF Viewer Modal */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.95);
-            z-index: 2000;
-            animation: fadeIn 0.4s ease;
-        }
-
-        .modal-content {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: var(--glass);
-            backdrop-filter: blur(30px);
-            border-radius: 20px;
-            width: 96%;
-            height: 96%;
-            display: flex;
-            flex-direction: column;
-            animation: slideUp 0.4s ease;
-            box-shadow: 0 30px 60px rgba(0,0,0,0.5);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .modal-header {
-            padding: 25px 30px;
-            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
-            color: white;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-radius: 20px 20px 0 0;
-        }
-
-        .modal-header h3 {
-            font-size: 1.4rem;
-            font-weight: 600;
-        }
-
-        .close-modal {
-            background: rgba(255,255,255,0.2);
-            border: none;
-            color: white;
-            font-size: 2rem;
-            cursor: pointer;
-            transition: var(--transition);
-            width: 45px;
-            height: 45px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .close-modal:hover {
-            background: rgba(255,255,255,0.3);
-            transform: rotate(90deg) scale(1.1);
-        }
-
-        .modal-body {
-            flex: 1;
-            padding: 0;
-            overflow: hidden;
-        }
-
-        .pdf-viewer {
-            width: 100%;
-            height: 100%;
-            border: none;
-            border-radius: 0 0 20px 20px;
-        }
+        /* (Same CSS as original file) */
+        :root { --primary: #2c3e50; --secondary: #3498db; --accent: #e74c3c; --light: #ecf0f1; --dark: #2c3e50; --success: #2ecc71; --warning: #f39c12; --shadow: 0 10px 30px rgba(0, 0, 0, 0.1); --transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94); --glass: rgba(255, 255, 255, 0.1); --glass-dark: rgba(0, 0, 0, 0.1); }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Poppins', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #2c3e50 100%); background-attachment: fixed; color: white; line-height: 1.7; min-height: 100vh; overflow-x: hidden; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 25px; }
+        header { background: var(--glass); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding: 1.2rem 0; position: sticky; top: 0; z-index: 1000; }
+        .header-content { display: flex; justify-content: space-between; align-items: center; }
+        .logo { display: flex; align-items: center; gap: 15px; }
+        .logo-icon { width: 50px; height: 50px; background: linear-gradient(135deg, #3498db, #2c3e50); border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); }
+        .logo-icon i { font-size: 1.5rem; color: white; }
+        .logo-text h1 { font-size: 1.6rem; font-weight: 700; background: linear-gradient(135deg, #fff, #e0e0e0); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .logo-text span { color: #f39c12; }
+        .hero { padding: 5rem 0 3rem; text-align: center; position: relative; }
+        .hero::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(circle at center, rgba(255,255,255,0.1) 0%, transparent 70%); pointer-events: none; }
+        .hero h2 { font-size: 3.5rem; margin-bottom: 1.2rem; font-weight: 700; text-shadow: 0 5px 15px rgba(0,0,0,0.3); animation: fadeInDown 1s ease; }
+        .hero p { font-size: 1.3rem; max-width: 700px; margin: 0 auto 3rem; opacity: 0.9; animation: fadeInUp 1s ease; line-height: 1.8; }
+        .main-content { padding: 0 0 4rem; min-height: 60vh; }
+        .content-wrapper { background: var(--glass); backdrop-filter: blur(20px); border-radius: 25px; padding: 3rem; box-shadow: var(--shadow); border: 1px solid rgba(255, 255, 255, 0.1); animation: slideUp 0.8s ease; }
+        .breadcrumb { display: flex; align-items: center; gap: 12px; margin-bottom: 2.5rem; font-size: 1rem; animation: fadeIn 0.6s ease; }
+        .breadcrumb a { color: rgba(255, 255, 255, 0.8); text-decoration: none; transition: var(--transition); padding: 8px 16px; border-radius: 20px; background: var(--glass-dark); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .breadcrumb a:hover { background: rgba(255, 255, 255, 0.2); transform: translateY(-2px); }
+        .breadcrumb i { font-size: 0.8rem; color: rgba(255, 255, 255, 0.5); }
+        .folders-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 30px; margin-bottom: 3rem; }
+        .folder-card { background: linear-gradient(135deg, var(--glass), var(--glass-dark)); border-radius: 20px; overflow: hidden; box-shadow: var(--shadow); transition: var(--transition); cursor: pointer; position: relative; animation: fadeInUp 0.6s ease; border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); }
+        .folder-card:hover { transform: translateY(-15px) scale(1.03); box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3); border-color: rgba(255, 255, 255, 0.3); }
+        .folder-icon { background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%); height: 160px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+        .folder-icon i { font-size: 4.5rem; color: white; filter: drop-shadow(3px 3px 6px rgba(0,0,0,0.3)); z-index: 2; }
+        .folder-icon::before { content: ''; position: absolute; top: -100%; left: -100%; width: 300%; height: 300%; background: linear-gradient(45deg, transparent, rgba(255,255,255,0.2), transparent); transform: rotate(45deg); animation: shine 4s infinite; }
+        .folder-info { padding: 25px; text-align: center; }
+        .folder-info h3 { font-size: 1.4rem; margin-bottom: 10px; font-weight: 600; color: white; }
+        .folder-info p { color: rgba(255, 255, 255, 0.7); font-size: 0.95rem; }
+        .file-count { position: absolute; top: 15px; right: 15px; background: var(--accent); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; font-weight: bold; box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4); z-index: 3; }
+        .files-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 25px; }
+        .file-card { background: linear-gradient(135deg, var(--glass), var(--glass-dark)); border-radius: 20px; overflow: hidden; box-shadow: var(--shadow); transition: var(--transition); cursor: pointer; animation: fadeInUp 0.6s ease; border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); }
+        .file-card:hover { transform: translateY(-12px) scale(1.05); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25); border-color: rgba(255, 255, 255, 0.3); }
+        .file-icon { background: linear-gradient(135deg, #f1c40f 0%, #f39c12 100%); height: 140px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+        .file-icon i { font-size: 3.5rem; color: white; filter: drop-shadow(3px 3px 6px rgba(0,0,0,0.3)); }
+        .file-icon::before { content: ''; position: absolute; top: -100%; left: -100%; width: 300%; height: 300%; background: linear-gradient(45deg, transparent, rgba(255,255,255,0.2), transparent); transform: rotate(45deg); animation: shine 4s infinite; }
+        .file-info { padding: 25px; text-align: center; }
+        .file-info h4 { font-size: 1.1rem; margin-bottom: 8px; color: white; font-weight: 600; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .file-info p { color: rgba(255, 255, 255, 0.7); font-size: 0.85rem; }
+        .loading { display: flex; justify-content: center; align-items: center; height: 400px; flex-direction: column; gap: 25px; }
+        .spinner { width: 70px; height: 70px; border: 4px solid rgba(255, 255, 255, 0.2); border-radius: 50%; border-top-color: var(--secondary); animation: spin 1.2s linear infinite; }
+        .loading-text { color: white; font-size: 1.3rem; font-weight: 500; }
+        .loading-subtext { color: rgba(255, 255, 255, 0.7); font-size: 1rem; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(40px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes fadeInDown { from { opacity: 0; transform: translateY(-40px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(60px) scale(0.9); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes shine { 0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); } 100% { transform: translateX(200%) translateY(200%) rotate(45deg); } }
+        footer { background: var(--glass); backdrop-filter: blur(20px); border-top: 1px solid rgba(255, 255, 255, 0.1); padding: 3rem 0 1.5rem; margin-top: 4rem; }
+        .footer-content { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 40px; margin-bottom: 2.5rem; }
+        .footer-section h3 { font-size: 1.3rem; margin-bottom: 1.2rem; position: relative; padding-bottom: 12px; font-weight: 600; }
+        .footer-section h3::after { content: ''; position: absolute; bottom: 0; left: 0; width: 50px; height: 3px; background: linear-gradient(135deg, var(--secondary), var(--primary)); border-radius: 2px; }
+        .footer-section p { margin-bottom: 1.2rem; font-size: 1rem; opacity: 0.8; line-height: 1.6; }
+        .footer-section ul { list-style: none; }
+        .footer-section ul li { margin-bottom: 12px; }
+        .footer-section ul li a { color: rgba(255, 255, 255, 0.8); text-decoration: none; transition: var(--transition); display: flex; align-items: center; gap: 10px; }
+        .footer-section ul li a:hover { color: var(--secondary); transform: translateX(5px); }
+        .social-links { display: flex; gap: 15px; margin-top: 1.5rem; }
+        .social-links a { display: flex; align-items: center; justify-content: center; width: 45px; height: 45px; background: var(--glass-dark); border-radius: 12px; color: white; transition: var(--transition); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .social-links a:hover { background: var(--secondary); transform: translateY(-5px) scale(1.1); box-shadow: 0 10px 20px rgba(52, 152, 219, 0.3); }
+        .footer-bottom { text-align: center; padding-top: 2rem; border-top: 1px solid rgba(255, 255, 255, 0.1); font-size: 0.95rem; color: rgba(255, 255, 255, 0.7); }
+        @media (max-width: 1200px) { .container { max-width: 1140px; } }
+        @media (max-width: 992px) { .folders-grid, .files-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); } .hero h2 { font-size: 3rem; } }
+        @media (max-width: 768px) { .header-content { flex-direction: column; gap: 20px; } .hero h2 { font-size: 2.5rem; } .content-wrapper { padding: 2rem; } .folders-grid, .files-grid { grid-template-columns: 1fr; gap: 20px; } }
+        @media (max-width: 480px) { .hero { padding: 3rem 0 2rem; } .hero h2 { font-size: 2.2rem; } .content-wrapper { padding: 1.5rem; border-radius: 20px; } }
+        .action-buttons { display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap; }
+        .action-btn { background: linear-gradient(135deg, var(--secondary), var(--primary)); color: white; border: none; padding: 14px 28px; border-radius: 15px; cursor: pointer; transition: var(--transition); display: flex; align-items: center; gap: 10px; font-weight: 500; font-size: 1rem; box-shadow: 0 8px 20px rgba(52, 152, 219, 0.3); border: 1px solid rgba(255, 255, 255, 0.2); }
+        .action-btn:hover { transform: translateY(-3px) scale(1.05); box-shadow: 0 12px 25px rgba(52, 152, 219, 0.4); }
+        .action-btn.secondary { background: linear-gradient(135deg, #95a5a6, #7f8c8d); }
+        .action-btn.secondary:hover { box-shadow: 0 12px 25px rgba(149, 165, 166, 0.4); }
+        .empty-state { text-align: center; padding: 5rem 2rem; color: rgba(255, 255, 255, 0.8); animation: fadeInUp 0.6s ease; }
+        .empty-state i { font-size: 5rem; margin-bottom: 2rem; color: rgba(255, 255, 255, 0.3); }
+        .empty-state h3 { font-size: 1.8rem; margin-bottom: 1.2rem; color: white; font-weight: 600; }
+        .empty-state p { font-size: 1.1rem; line-height: 1.7; max-width: 600px; margin: 0 auto 2.5rem; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.95); z-index: 2000; animation: fadeIn 0.4s ease; }
+        .modal-content { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--glass); backdrop-filter: blur(30px); border-radius: 20px; width: 96%; height: 96%; display: flex; flex-direction: column; animation: slideUp 0.4s ease; box-shadow: 0 30px 60px rgba(0,0,0,0.5); border: 1px solid rgba(255, 255, 255, 0.2); }
+        .modal-header { padding: 25px 30px; background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%); color: white; display: flex; justify-content: space-between; align-items: center; border-radius: 20px 20px 0 0; }
+        .modal-header h3 { font-size: 1.4rem; font-weight: 600; }
+        .close-modal { background: rgba(255,255,255,0.2); border: none; color: white; font-size: 2rem; cursor: pointer; transition: var(--transition); width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .close-modal:hover { background: rgba(255,255,255,0.3); transform: rotate(90deg) scale(1.1); }
+        .modal-body { flex: 1; padding: 0; overflow: hidden; }
+        .pdf-viewer { width: 100%; height: 100%; border: none; border-radius: 0 0 20px 20px; }
     </style>
 </head>
 <body>
@@ -807,61 +199,300 @@
     </footer>
 
     <script>
-       // === REAL GOOGLE DRIVE INTEGRATION ===
-const API_KEY = "AIzaSyCXsN3FAw5Q9yM1UthR5UUcSMyWZeU5CK0"; 
-const ROOT_FOLDER = "1idLjcw5YSWSnu5cddFjZkT3yfLbgsHh_"; // your real Drive root folder ID
+    /*******************************
+     * FRONTEND-ONLY Google Drive reader
+     * Strategy: fetch the public Drive folder page and extract the JSON
+     * Drive uses inside its HTML (AF_initDataCallback / viewerData). We parse
+     * that JSON to build folders/files list.
+     *
+     * Limitations:
+     *  - This scrapes Google's public HTML, fragile to changes.
+     *  - Works for public folders only ("Anyone with the link can view").
+     *  - No API keys, no backend. Dynamic: any change in Drive shows after reload.
+     *******************************/
 
-async function listDrive(folderId) {
-    const url = `https://www.googleapis.com/drive/v3/files?q='${folderId}' in parents&key=${API_KEY}&fields=files(id,name,mimeType)`;
-    const response = await fetch(url);
-    return await response.json();
-}
+    // === CONFIGURE HERE ===
+    const ROOT_FOLDER = '1idLjcw5YSWSnu5cddFjZkT3yfLbgsHh_'; // <-- set your folder ID
 
-async function loadRootFolder() {
-    showLoading("Connecting to Google Drive", "Reading your question bank structure...");
-    updateBreadcrumb();
+    // DOM refs
+    const contentArea = document.getElementById('content-area');
+    const breadcrumbEl = document.getElementById('breadcrumb');
+    const pdfModal = document.getElementById('pdf-modal');
+    const pdfViewer = document.getElementById('pdf-viewer');
+    const pdfTitle = document.getElementById('pdf-title');
+    const closeModalBtn = document.getElementById('close-modal');
 
-    const data = await listDrive(ROOT_FOLDER);
+    let currentPath = [];
 
-    const folders = data.files.filter(f => f.mimeType === "application/vnd.google-apps.folder");
-
-    displayFolders(
-        folders.map(f => ({ id: f.id, name: f.name, icon: "folder", color: "#3498db" })),
-        "Specialties"
-    );
-}
-
-async function loadFolder(folderId, folderName) {
-    showLoading(`Loading ${folderName}`, "Reading folder contents...");
-
-    currentPath.push({ id: folderId, name: folderName });
-    updateBreadcrumb();
-
-    const data = await listDrive(folderId);
-
-    const folders = data.files.filter(f => f.mimeType === "application/vnd.google-apps.folder");
-    const files = data.files.filter(f => f.mimeType === "application/pdf");
-
-    if (folders.length > 0) {
-        displayFolders(
-            folders.map(f => ({ id: f.id, name: f.name, icon: "folder", color: "#9b59b6" })),
-            folderName
-        );
-    } else {
-        displayFiles(
-            files.map(f => ({ id: f.id, name: f.name })),
-            folderName
-        );
+    // Utilities - show loading
+    function showLoading(title = 'Loading', sub = '') {
+        contentArea.innerHTML = `
+            <div class="loading">
+                <div class="spinner"></div>
+                <div class="loading-text">${title}</div>
+                <div class="loading-subtext">${sub}</div>
+            </div>
+        `;
     }
-}
 
-function openFile(fileId, fileName) {
-    const url = `https://drive.google.com/uc?export=download&id=${fileId}`;
-    pdfViewer.src = url;
-    pdfTitle.textContent = fileName;
-    pdfModal.style.display = 'block';
-}
+    function updateBreadcrumb() {
+        const parts = ['<a href="#" id="home-link">Home</a>'];
+        currentPath.forEach((p, i) => {
+            parts.push(`<a href=\"#\" data-index=\"${i}\">${p.name}</a>`);
+        });
+        breadcrumbEl.innerHTML = parts.join('');
+        // add click handlers
+        Array.from(breadcrumbEl.querySelectorAll('a[data-index]')).forEach(a => {
+            a.addEventListener('click', (e) => {
+                e.preventDefault();
+                const idx = Number(e.currentTarget.dataset.index);
+                // go to that index - pop after
+                currentPath = currentPath.slice(0, idx + 1);
+                loadFolder(currentPath[currentPath.length - 1].id, currentPath[currentPath.length - 1].name, true);
+            });
+        });
+        document.getElementById('home-link').addEventListener('click', (e) => {
+            e.preventDefault();
+            currentPath = [];
+            loadRootFolder();
+        });
+    }
 
+    // Extract JSON payloads from Drive folder HTML.
+    // We'll try several regex patterns because Google uses different wrappers.
+    function extractJsonObjectsFromHtml(html) {
+        const results = [];
+
+        // Pattern 1: AF_initDataCallback({...});   -> find the data: ... part
+        const afRegex = /AF_initDataCallback\((\{[\s\S]*?\})\);/g;
+        let m;
+        while ((m = afRegex.exec(html)) !== null) {
+            try {
+                const obj = JSON.parse(m[1].replace(/\n/g, ''));
+                if (obj && obj.data) results.push(obj.data);
+            } catch (e) {
+                // ignore parse errors
+            }
+        }
+
+        // Pattern 2: window.viewerData = ...; or window["viewerData"] = ...;
+        const viewerRegex = /window\.viewerData\s*=\s*(\[.*?\]);/s;
+        const vMatch = html.match(viewerRegex);
+        if (vMatch) {
+            try {
+                results.push(JSON.parse(vMatch[1]));
+            } catch (e) {}
+        }
+
+        // Pattern 3: look for 'window["_DRIVE_ivd"] = ' encoded string - attempt decode
+        const ivdRegex = /window\['?_?DRIVE_ivd'?\]\s*=\s*'([^']*)'/;
+        const ivdMatch = html.match(ivdRegex);
+        if (ivdMatch) {
+            try {
+                // the string is often escaped; replace \\" with " then parse
+                const decoded = ivdMatch[1].replace(/\\\"/g, '\"');
+                results.push(JSON.parse(decoded));
+            } catch (e) {}
+        }
+
+        return results;
+    }
+
+    // Normalize Drive data to {folders:[], files:[]}
+    function parseDriveDataObjects(objs) {
+        // Google structures are complex; we try to find arrays that look like file entries.
+        // We'll search nested arrays for items that contain mimeType-like info or file ids (strings of length 28+)
+
+        const folders = [];
+        const files = [];
+
+        function recurse(node) {
+            if (!node) return;
+            if (Array.isArray(node)) {
+                // heuristic: items that have a 2nd element which is an object with mimeType or link
+                node.forEach(item => recurse(item));
+            } else if (typeof node === 'object') {
+                for (const k in node) recurse(node[k]);
+            } else if (typeof node === 'string') {
+                // no-op
+            }
+        }
+
+        // Best-effort approach: scan objects for entries shaped like [id, name, mimeType]
+        function scanForEntries(o) {
+            if (!o) return;
+            if (Array.isArray(o)) {
+                // look for arrays where one element looks like file id (length >= 20 and contains letters/numbers/_-)
+                o.forEach(item => {
+                    if (Array.isArray(item) && item.length >= 2) {
+                        const maybeId = item[0];
+                        const name = item[1];
+                        if (typeof maybeId === 'string' && maybeId.length >= 20 && typeof name === 'string') {
+                            // decide file/folder by file extension in name or presence of 'folder' word
+                            if (/\.(pdf|docx?|pptx?|xlsx?)$/i.test(name)) {
+                                files.push({ id: maybeId, name });
+                            } else {
+                                // add as folder candidate
+                                folders.push({ id: maybeId, name });
+                            }
+                        }
+                    }
+                    // recurse
+                    scanForEntries(item);
+                });
+            } else if (typeof o === 'object') {
+                Object.values(o).forEach(v => scanForEntries(v));
+            }
+        }
+
+        objs.forEach(scanForEntries);
+
+        // Deduplicate by id
+        const unique = (arr) => arr.filter((a, i) => arr.findIndex(x => x.id === a.id) === i);
+
+        return { folders: unique(folders), files: unique(files) };
+    }
+
+    // Fetch folder page and try to extract folder/file info
+    async function listDrive(folderId) {
+        const url = `https://drive.google.com/drive/folders/${folderId}`;
+        const res = await fetch(url).then(r => r.text());
+        const objs = extractJsonObjectsFromHtml(res);
+        const parsed = parseDriveDataObjects(objs);
+
+        // Fallback: if parse found nothing, try the embed XML feed
+        if (parsed.folders.length === 0 && parsed.files.length === 0) {
+            // try atom feed
+            try {
+                const feedUrl = `https://drive.google.com/feeds/?id=${folderId}&output=atom`;
+                const feedText = await fetch(feedUrl).then(r => r.text());
+                // parse simple <entry><title>name</title><link href="...id=FILEID"/></entry>
+                const parser = new DOMParser();
+                const xml = parser.parseFromString(feedText, 'application/xml');
+                const entries = Array.from(xml.querySelectorAll('entry'));
+                const files = entries.map(e => {
+                    const title = e.querySelector('title') ? e.querySelector('title').textContent : 'file';
+                    const link = e.querySelector('link');
+                    let fid = null;
+                    if (link) {
+                        const href = link.getAttribute('href') || '';
+                        const m = href.match(/id=([a-zA-Z0-9_-]+)/);
+                        if (m) fid = m[1];
+                    }
+                    return fid ? { id: fid, name: title } : null;
+                }).filter(Boolean);
+                return { folders: [], files };
+            } catch (e) {
+                return { folders: [], files: [] };
+            }
+        }
+
+        return parsed;
+    }
+
+    // Render functions
+    function displayFolders(folders, title) {
+        const html = [];
+        html.push('<div class="folders-grid">');
+        if (folders.length === 0) html.push('<div class="empty-state"><i class="fas fa-folder-open"></i><h3>No folders</h3><p>This folder is empty.</p></div>');
+        folders.forEach(f => {
+            html.push(`
+                <div class="folder-card" data-id="${f.id}" data-name="${escapeHtml(f.name)}">
+                    <div class="folder-icon"><i class="fas fa-folder"></i></div>
+                    <div class="folder-info">
+                        <h3>${escapeHtml(f.name)}</h3>
+                        <p>Open folder</p>
+                    </div>
+                </div>
+            `);
+        });
+        html.push('</div>');
+        contentArea.innerHTML = html.join('');
+
+        // attach click handlers
+        Array.from(contentArea.querySelectorAll('.folder-card')).forEach(card => {
+            card.addEventListener('click', () => {
+                const id = card.dataset.id;
+                const name = card.dataset.name;
+                loadFolder(id, name);
+            });
+        });
+    }
+
+    function displayFiles(files, folderName) {
+        const html = [];
+        html.push('<div class="files-grid">');
+        if (files.length === 0) html.push('<div class="empty-state"><i class="fas fa-file"></i><h3>No files</h3><p>This folder has no files.</p></div>');
+        files.forEach(f => {
+            html.push(`
+                <div class="file-card" data-id="${f.id}" data-name="${escapeHtml(f.name)}">
+                    <div class="file-icon"><i class="fas fa-file-pdf"></i></div>
+                    <div class="file-info">
+                        <h4>${escapeHtml(f.name)}</h4>
+                        <p>Click to open</p>
+                    </div>
+                </div>
+            `);
+        });
+        html.push('</div>');
+        contentArea.innerHTML = html.join('');
+
+        Array.from(contentArea.querySelectorAll('.file-card')).forEach(card => {
+            card.addEventListener('click', () => {
+                const id = card.dataset.id;
+                const name = card.dataset.name;
+                openFile(id, name);
+            });
+        });
+    }
+
+    function escapeHtml(s) { return String(s).replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+    async function loadRootFolder() {
+        showLoading('Connecting to Google Drive', 'Reading folder structure...');
+        currentPath = [];
+        updateBreadcrumb();
+        const data = await listDrive(ROOT_FOLDER);
+        // prefer folders list; if none, show files
+        if (data.folders && data.folders.length > 0) {
+            displayFolders(data.folders.map(f => ({ id: f.id, name: f.name })), 'Root');
+        } else {
+            displayFiles((data.files || []).map(f => ({ id: f.id, name: f.name })), 'Root');
+        }
+    }
+
+    async function loadFolder(folderId, folderName, fromBreadcrumb = false) {
+        showLoading(`Loading ${folderName}`, 'Reading folder contents...');
+        if (!fromBreadcrumb) currentPath.push({ id: folderId, name: folderName });
+        updateBreadcrumb();
+        const data = await listDrive(folderId);
+        if (data.folders && data.folders.length > 0) {
+            displayFolders(data.folders.map(f => ({ id: f.id, name: f.name })), folderName);
+        } else {
+            displayFiles((data.files || []).map(f => ({ id: f.id, name: f.name })), folderName);
+        }
+    }
+
+    function openFile(fileId, fileName) {
+        // direct download/view link
+        const url = `https://drive.google.com/uc?export=download&id=${fileId}`;
+        pdfViewer.src = url;
+        pdfTitle.textContent = fileName;
+        pdfModal.style.display = 'block';
+    }
+
+    closeModalBtn.addEventListener('click', () => {
+        pdfModal.style.display = 'none';
+        pdfViewer.src = '';
+    });
+
+    function refreshContent() {
+        if (currentPath.length === 0) loadRootFolder();
+        else loadFolder(currentPath[currentPath.length - 1].id, currentPath[currentPath.length - 1].name, true);
+    }
+
+    // initial load
+    loadRootFolder();
     </script>
 </body>
 </html>
