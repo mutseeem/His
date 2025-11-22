@@ -1,358 +1,780 @@
-<!--
-Original uploaded file: /mnt/data/index.html
-This file is a modified frontend-only version that fetches Google Drive folder pages
-and extracts the JSON used by Drive to build a dynamic folder+file view WITHOUT
-using Google API keys or a backend.
-
-IMPORTANT: This scraping method relies on Google Drive's public HTML structure and
-may break if Google changes it. It is the best frontend-only approach available.
--->
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HIS University - Question Bank</title>
+    <title>HIS University - Student Portal</title>
+    
+    <!-- Fonts & Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <style>
-        /* (Same CSS as original file) */
-        :root { --primary: #2c3e50; --secondary: #3498db; --accent: #e74c3c; --light: #ecf0f1; --dark: #2c3e50; --success: #2ecc71; --warning: #f39c12; --shadow: 0 10px 30px rgba(0, 0, 0, 0.1); --transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94); --glass: rgba(255, 255, 255, 0.1); --glass-dark: rgba(0, 0, 0, 0.1); }
+        :root {
+            /* Light Mode Variables */
+            --primary: #4361ee;
+            --primary-dark: #3a0ca3;
+            --secondary: #7209b7;
+            --accent: #f72585;
+            --success: #4cc9f0;
+            
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+            --text-main: #2b2d42;
+            --text-light: #8d99ae;
+            
+            --glass-nav: rgba(255, 255, 255, 0.8);
+            --glass-layout: rgba(255, 255, 255, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.8);
+            
+            --shadow-sm: 0 4px 6px rgba(0,0,0,0.05);
+            --shadow-md: 0 10px 30px rgba(67, 97, 238, 0.15);
+            --shadow-hover: 0 20px 40px rgba(67, 97, 238, 0.25);
+            
+            --radius: 24px;
+        }
+
+        /* Dark Mode Variables */
+        body.dark-mode {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #f1f5f9;
+            --text-light: #94a3b8;
+            
+            --glass-nav: rgba(15, 23, 42, 0.85);
+            --glass-layout: rgba(30, 41, 59, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            
+            --shadow-sm: 0 4px 6px rgba(0,0,0,0.2);
+            --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.3);
+            --shadow-hover: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Poppins', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #2c3e50 100%); background-attachment: fixed; color: white; line-height: 1.7; min-height: 100vh; overflow-x: hidden; }
-        .container { max-width: 1400px; margin: 0 auto; padding: 0 25px; }
-        header { background: var(--glass); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding: 1.2rem 0; position: sticky; top: 0; z-index: 1000; }
-        .header-content { display: flex; justify-content: space-between; align-items: center; }
-        .logo { display: flex; align-items: center; gap: 15px; }
-        .logo-icon { width: 50px; height: 50px; background: linear-gradient(135deg, #3498db, #2c3e50); border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); }
-        .logo-icon i { font-size: 1.5rem; color: white; }
-        .logo-text h1 { font-size: 1.6rem; font-weight: 700; background: linear-gradient(135deg, #fff, #e0e0e0); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .logo-text span { color: #f39c12; }
-        .hero { padding: 5rem 0 3rem; text-align: center; position: relative; }
-        .hero::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(circle at center, rgba(255,255,255,0.1) 0%, transparent 70%); pointer-events: none; }
-        .hero h2 { font-size: 3.5rem; margin-bottom: 1.2rem; font-weight: 700; text-shadow: 0 5px 15px rgba(0,0,0,0.3); animation: fadeInDown 1s ease; }
-        .hero p { font-size: 1.3rem; max-width: 700px; margin: 0 auto 3rem; opacity: 0.9; animation: fadeInUp 1s ease; line-height: 1.8; }
-        .main-content { padding: 0 0 4rem; min-height: 60vh; }
-        .content-wrapper { background: var(--glass); backdrop-filter: blur(20px); border-radius: 25px; padding: 3rem; box-shadow: var(--shadow); border: 1px solid rgba(255, 255, 255, 0.1); animation: slideUp 0.8s ease; }
-        .breadcrumb { display: flex; align-items: center; gap: 12px; margin-bottom: 2.5rem; font-size: 1rem; animation: fadeIn 0.6s ease; }
-        .breadcrumb a { color: rgba(255, 255, 255, 0.8); text-decoration: none; transition: var(--transition); padding: 8px 16px; border-radius: 20px; background: var(--glass-dark); border: 1px solid rgba(255, 255, 255, 0.1); }
-        .breadcrumb a:hover { background: rgba(255, 255, 255, 0.2); transform: translateY(-2px); }
-        .breadcrumb i { font-size: 0.8rem; color: rgba(255, 255, 255, 0.5); }
-        .folders-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 30px; margin-bottom: 3rem; }
-        .folder-card { background: linear-gradient(135deg, var(--glass), var(--glass-dark)); border-radius: 20px; overflow: hidden; box-shadow: var(--shadow); transition: var(--transition); cursor: pointer; position: relative; animation: fadeInUp 0.6s ease; border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); }
-        .folder-card:hover { transform: translateY(-15px) scale(1.03); box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3); border-color: rgba(255, 255, 255, 0.3); }
-        .folder-icon { background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%); height: 160px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
-        .folder-icon i { font-size: 4.5rem; color: white; filter: drop-shadow(3px 3px 6px rgba(0,0,0,0.3)); z-index: 2; }
-        .folder-icon::before { content: ''; position: absolute; top: -100%; left: -100%; width: 300%; height: 300%; background: linear-gradient(45deg, transparent, rgba(255,255,255,0.2), transparent); transform: rotate(45deg); animation: shine 4s infinite; }
-        .folder-info { padding: 25px; text-align: center; }
-        .folder-info h3 { font-size: 1.4rem; margin-bottom: 10px; font-weight: 600; color: white; }
-        .folder-info p { color: rgba(255, 255, 255, 0.7); font-size: 0.95rem; }
-        .file-count { position: absolute; top: 15px; right: 15px; background: var(--accent); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; font-weight: bold; box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4); z-index: 3; }
-        .files-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 25px; }
-        .file-card { background: linear-gradient(135deg, var(--glass), var(--glass-dark)); border-radius: 20px; overflow: hidden; box-shadow: var(--shadow); transition: var(--transition); cursor: pointer; animation: fadeInUp 0.6s ease; border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); }
-        .file-card:hover { transform: translateY(-12px) scale(1.05); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25); border-color: rgba(255, 255, 255, 0.3); }
-        .file-icon { background: linear-gradient(135deg, #f1c40f 0%, #f39c12 100%); height: 140px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
-        .file-icon i { font-size: 3.5rem; color: white; filter: drop-shadow(3px 3px 6px rgba(0,0,0,0.3)); }
-        .file-icon::before { content: ''; position: absolute; top: -100%; left: -100%; width: 300%; height: 300%; background: linear-gradient(45deg, transparent, rgba(255,255,255,0.2), transparent); transform: rotate(45deg); animation: shine 4s infinite; }
-        .file-info { padding: 25px; text-align: center; }
-        .file-info h4 { font-size: 1.1rem; margin-bottom: 8px; color: white; font-weight: 600; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        .file-info p { color: rgba(255, 255, 255, 0.7); font-size: 0.85rem; }
-        .loading { display: flex; justify-content: center; align-items: center; height: 400px; flex-direction: column; gap: 25px; }
-        .spinner { width: 70px; height: 70px; border: 4px solid rgba(255, 255, 255, 0.2); border-radius: 50%; border-top-color: var(--secondary); animation: spin 1.2s linear infinite; }
-        .loading-text { color: white; font-size: 1.3rem; font-weight: 500; }
-        .loading-subtext { color: rgba(255, 255, 255, 0.7); font-size: 1rem; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes fadeInUp { from { opacity: 0; transform: translateY(40px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes fadeInDown { from { opacity: 0; transform: translateY(-40px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(60px) scale(0.9); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes shine { 0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); } 100% { transform: translateX(200%) translateY(200%) rotate(45deg); } }
-        footer { background: var(--glass); backdrop-filter: blur(20px); border-top: 1px solid rgba(255, 255, 255, 0.1); padding: 3rem 0 1.5rem; margin-top: 4rem; }
-        .footer-content { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 40px; margin-bottom: 2.5rem; }
-        .footer-section h3 { font-size: 1.3rem; margin-bottom: 1.2rem; position: relative; padding-bottom: 12px; font-weight: 600; }
-        .footer-section h3::after { content: ''; position: absolute; bottom: 0; left: 0; width: 50px; height: 3px; background: linear-gradient(135deg, var(--secondary), var(--primary)); border-radius: 2px; }
-        .footer-section p { margin-bottom: 1.2rem; font-size: 1rem; opacity: 0.8; line-height: 1.6; }
-        .footer-section ul { list-style: none; }
-        .footer-section ul li { margin-bottom: 12px; }
-        .footer-section ul li a { color: rgba(255, 255, 255, 0.8); text-decoration: none; transition: var(--transition); display: flex; align-items: center; gap: 10px; }
-        .footer-section ul li a:hover { color: var(--secondary); transform: translateX(5px); }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            overflow-x: hidden;
+            min-height: 100vh;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* --- Animated Background Shapes --- */
+        .blob {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(60px);
+            z-index: -1;
+            opacity: 0.6;
+            animation: float 10s infinite ease-in-out;
+        }
+        .blob-1 { top: -10%; left: -10%; width: 500px; height: 500px; background: rgba(67, 97, 238, 0.2); }
+        .blob-2 { bottom: -10%; right: -10%; width: 600px; height: 600px; background: rgba(247, 37, 133, 0.15); animation-delay: -5s; }
+        .blob-3 { top: 40%; left: 60%; width: 300px; height: 300px; background: rgba(76, 201, 240, 0.2); animation-duration: 15s; }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(30px, -30px); }
+        }
+
+        /* --- Header & Nav --- */
+        nav {
+            background: var(--glass-nav);
+            backdrop-filter: blur(20px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            border-bottom: 1px solid var(--glass-border);
+            padding: 1rem 0;
+            transition: background 0.3s;
+        }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 2rem; }
+
+        .nav-content { display: flex; justify-content: space-between; align-items: center; }
+
+        .logo { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+        .logo-icon { 
+            width: 48px; height: 48px; 
+            background: linear-gradient(135deg, var(--primary), var(--accent)); 
+            border-radius: 14px; 
+            display: flex; align-items: center; justify-content: center; 
+            color: white; font-size: 1.5rem; 
+            box-shadow: var(--shadow-md);
+        }
+        .logo-text { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.5px; background: linear-gradient(to right, var(--primary), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+        /* --- Header Controls (Search + Theme) --- */
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .theme-toggle {
+            background: var(--card-bg);
+            border: 1px solid var(--glass-border);
+            color: var(--text-main);
+            width: 45px; height: 45px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: all 0.3s;
+            box-shadow: var(--shadow-sm);
+        }
+        .theme-toggle:hover {
+            transform: rotate(15deg) scale(1.1);
+            box-shadow: var(--shadow-md);
+            color: var(--primary);
+        }
+
+        /* --- Search Bar --- */
+        .search-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            display: none; /* Hidden on mobile initially */
+        }
+        @media(min-width: 768px) { .search-container { display: block; } }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 24px 12px 50px;
+            border-radius: 50px;
+            border: 2px solid transparent;
+            background: var(--card-bg);
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 0.95rem;
+            box-shadow: var(--shadow-sm);
+            transition: all 0.3s ease;
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(67, 97, 238, 0.15);
+        }
+        .search-icon {
+            position: absolute;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-light);
+        }
+
+        /* --- Hero Section --- */
+        .hero {
+            text-align: center;
+            padding: 4rem 0 2rem;
+            position: relative;
+        }
+        .hero h1 { font-size: 3.5rem; font-weight: 800; margin-bottom: 1rem; line-height: 1.1; color: var(--text-main); }
+        .hero span { color: var(--primary); }
+        .hero p { font-size: 1.2rem; color: var(--text-light); max-width: 600px; margin: 0 auto; }
+        
+        /* --- Main Content Area --- */
+        .main-layout {
+            background: var(--glass-layout);
+            backdrop-filter: blur(10px);
+            border-radius: var(--radius);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--shadow-sm);
+            min-height: 600px;
+            margin-bottom: 4rem;
+            padding: 2rem;
+            position: relative;
+            overflow: hidden;
+            transition: background 0.3s, border-color 0.3s;
+        }
+
+        /* --- Breadcrumbs --- */
+        .breadcrumb-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding-bottom: 1.5rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 2px solid rgba(0,0,0,0.05);
+            overflow-x: auto;
+        }
+        .dark-mode .breadcrumb-bar { border-bottom-color: rgba(255,255,255,0.1); }
+
+        .crumb {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            color: var(--text-light);
+            cursor: pointer;
+            padding: 8px 16px;
+            border-radius: 12px;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .crumb:hover { background: var(--card-bg); color: var(--primary); box-shadow: var(--shadow-sm); }
+        .crumb.active { background: var(--primary); color: white; pointer-events: none; }
+        .crumb-divider { color: var(--text-light); font-size: 0.8rem; }
+
+        /* --- Grid Layouts --- */
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 24px;
+        }
+
+        /* --- Cards --- */
+        .card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 24px;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 1px solid var(--glass-border);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            animation: popIn 0.5s backwards;
+        }
+
+        .card:hover {
+            transform: translateY(-10px);
+            box-shadow: var(--shadow-hover);
+            border-color: var(--primary);
+        }
+
+        @keyframes popIn {
+            from { opacity: 0; transform: scale(0.8) translateY(20px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        /* Folder Visual */
+        .folder-visual {
+            width: 80px; height: 70px;
+            background: linear-gradient(135deg, #ffd166, #ff9f1c);
+            border-radius: 8px 16px 16px 16px;
+            position: relative;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 20px rgba(255, 159, 28, 0.3);
+            transition: transform 0.3s;
+        }
+        .folder-visual::before {
+            content: ''; position: absolute; top: -10px; left: 0;
+            width: 40px; height: 10px;
+            background: inherit; border-radius: 8px 8px 0 0;
+            opacity: 0.8;
+        }
+        .card:hover .folder-visual { transform: scale(1.1) rotate(-5deg); }
+
+        /* File Visual */
+        .file-visual {
+            width: 70px; height: 85px;
+            background: linear-gradient(135deg, #ef476f, #d90429);
+            border-radius: 12px;
+            position: relative;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 20px rgba(217, 4, 41, 0.3);
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-size: 1.8rem;
+        }
+        .file-visual::after {
+            content: ''; position: absolute; top: 0; right: 0;
+            border-width: 0 20px 20px 0;
+            border-style: solid;
+            border-color: rgba(255,255,255,0.3) transparent;
+            border-radius: 0 0 0 8px;
+        }
+
+        .card-title { font-weight: 700; font-size: 1.1rem; line-height: 1.4; margin-bottom: 8px; color: var(--text-main); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+        .card-subtitle { font-size: 0.85rem; color: var(--text-light); font-weight: 500; }
+        
+        .card-action {
+            margin-top: auto;
+            padding-top: 15px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.3s;
+        }
+        .card:hover .card-action { opacity: 1; transform: translateY(0); }
+        .btn-icon {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            background: var(--bg-color);
+            color: var(--primary);
+            display: flex; align-items: center; justify-content: center;
+            transition: 0.2s;
+        }
+        .btn-icon:hover { background: var(--primary); color: white; }
+
+        /* --- Loading & Empty --- */
+        .loading-state {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 400px; text-align: center;
+        }
+        .spinner-box { width: 80px; height: 80px; position: relative; margin-bottom: 20px; }
+        .spinner-circle {
+            position: absolute; width: 100%; height: 100%;
+            border-radius: 50%; border: 4px solid transparent;
+            border-top-color: var(--primary);
+            animation: spin 1s linear infinite;
+        }
+        .spinner-circle:nth-child(2) { border-top-color: var(--accent); animation-duration: 1.5s; transform: scale(0.7); }
+        .spinner-circle:nth-child(3) { border-top-color: var(--success); animation-duration: 2s; transform: scale(0.4); }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .empty-state { text-align: center; padding: 4rem; color: var(--text-light); }
+        .empty-icon { font-size: 4rem; margin-bottom: 1rem; opacity: 0.3; }
+
+        /* --- Modal --- */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); backdrop-filter: blur(8px);
+            z-index: 1000;
+            display: none;
+            opacity: 0; transition: opacity 0.3s;
+        }
+        .modal-overlay.active { display: flex; opacity: 1; align-items: center; justify-content: center; }
+        
+        .modal-card {
+            width: 90%; height: 90%; max-width: 1200px;
+            background: var(--card-bg); border-radius: 24px;
+            display: flex; flex-direction: column;
+            overflow: hidden; box-shadow: 0 50px 100px rgba(0,0,0,0.5);
+            transform: scale(0.9); transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .modal-overlay.active .modal-card { transform: scale(1); }
+        
+        .modal-header {
+            padding: 1.5rem; display: flex; justify-content: space-between; align-items: center;
+            background: var(--card-bg); border-bottom: 1px solid var(--glass-border);
+            color: var(--text-main);
+        }
+        
+        .modal-title { font-weight: 700; font-size: 1.2rem; display: flex; align-items: center; gap: 10px; }
+        
+        .modal-actions { display: flex; align-items: center; gap: 15px; }
+
+        .download-btn {
+            background: var(--primary);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 30px;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+            display: flex; align-items: center; gap: 8px;
+            transition: all 0.2s;
+            box-shadow: var(--shadow-sm);
+        }
+        .download-btn:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .close-btn {
+            width: 40px; height: 40px; border-radius: 50%; border: none;
+            background: var(--bg-color); color: var(--text-main); cursor: pointer; font-size: 1.2rem;
+            transition: 0.2s;
+        }
+        .close-btn:hover { background: #ff4757; color: white; transform: rotate(90deg); }
+        
+        .modal-body { flex: 1; background: var(--bg-color); position: relative; }
+        .pdf-frame { width: 100%; height: 100%; border: none; }
+
+        /* --- Footer (Information Section) --- */
+        footer {
+            background: var(--glass-nav);
+            backdrop-filter: blur(20px);
+            padding: 4rem 0 2rem;
+            margin-top: auto;
+            border-top: 1px solid var(--glass-border);
+        }
+        .footer-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            margin-bottom: 3rem;
+        }
+        .footer-section h3 {
+            font-size: 1.2rem;
+            margin-bottom: 1.5rem;
+            color: var(--text-main);
+            font-weight: 700;
+            position: relative;
+            padding-bottom: 10px;
+        }
+        .footer-section h3::after {
+            content: ''; position: absolute; bottom: 0; left: 0;
+            width: 50px; height: 3px;
+            background: linear-gradient(to right, var(--primary), var(--secondary));
+            border-radius: 2px;
+        }
+        .footer-section p {
+            color: var(--text-light);
+            line-height: 1.7;
+            margin-bottom: 1rem;
+        }
+        .footer-links { list-style: none; }
+        .footer-links li { margin-bottom: 12px; }
+        .footer-links a {
+            color: var(--text-light);
+            text-decoration: none;
+            display: flex; align-items: center; gap: 10px;
+            transition: 0.2s;
+        }
+        .footer-links a:hover { color: var(--primary); transform: translateX(5px); }
+        
         .social-links { display: flex; gap: 15px; margin-top: 1.5rem; }
-        .social-links a { display: flex; align-items: center; justify-content: center; width: 45px; height: 45px; background: var(--glass-dark); border-radius: 12px; color: white; transition: var(--transition); border: 1px solid rgba(255, 255, 255, 0.1); }
-        .social-links a:hover { background: var(--secondary); transform: translateY(-5px) scale(1.1); box-shadow: 0 10px 20px rgba(52, 152, 219, 0.3); }
-        .footer-bottom { text-align: center; padding-top: 2rem; border-top: 1px solid rgba(255, 255, 255, 0.1); font-size: 0.95rem; color: rgba(255, 255, 255, 0.7); }
-        @media (max-width: 1200px) { .container { max-width: 1140px; } }
-        @media (max-width: 992px) { .folders-grid, .files-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); } .hero h2 { font-size: 3rem; } }
-        @media (max-width: 768px) { .header-content { flex-direction: column; gap: 20px; } .hero h2 { font-size: 2.5rem; } .content-wrapper { padding: 2rem; } .folders-grid, .files-grid { grid-template-columns: 1fr; gap: 20px; } }
-        @media (max-width: 480px) { .hero { padding: 3rem 0 2rem; } .hero h2 { font-size: 2.2rem; } .content-wrapper { padding: 1.5rem; border-radius: 20px; } }
-        .action-buttons { display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap; }
-        .action-btn { background: linear-gradient(135deg, var(--secondary), var(--primary)); color: white; border: none; padding: 14px 28px; border-radius: 15px; cursor: pointer; transition: var(--transition); display: flex; align-items: center; gap: 10px; font-weight: 500; font-size: 1rem; box-shadow: 0 8px 20px rgba(52, 152, 219, 0.3); border: 1px solid rgba(255, 255, 255, 0.2); }
-        .action-btn:hover { transform: translateY(-3px) scale(1.05); box-shadow: 0 12px 25px rgba(52, 152, 219, 0.4); }
-        .action-btn.secondary { background: linear-gradient(135deg, #95a5a6, #7f8c8d); }
-        .action-btn.secondary:hover { box-shadow: 0 12px 25px rgba(149, 165, 166, 0.4); }
-        .empty-state { text-align: center; padding: 5rem 2rem; color: rgba(255, 255, 255, 0.8); animation: fadeInUp 0.6s ease; }
-        .empty-state i { font-size: 5rem; margin-bottom: 2rem; color: rgba(255, 255, 255, 0.3); }
-        .empty-state h3 { font-size: 1.8rem; margin-bottom: 1.2rem; color: white; font-weight: 600; }
-        .empty-state p { font-size: 1.1rem; line-height: 1.7; max-width: 600px; margin: 0 auto 2.5rem; }
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.95); z-index: 2000; animation: fadeIn 0.4s ease; }
-        .modal-content { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--glass); backdrop-filter: blur(30px); border-radius: 20px; width: 96%; height: 96%; display: flex; flex-direction: column; animation: slideUp 0.4s ease; box-shadow: 0 30px 60px rgba(0,0,0,0.5); border: 1px solid rgba(255, 255, 255, 0.2); }
-        .modal-header { padding: 25px 30px; background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%); color: white; display: flex; justify-content: space-between; align-items: center; border-radius: 20px 20px 0 0; }
-        .modal-header h3 { font-size: 1.4rem; font-weight: 600; }
-        .close-modal { background: rgba(255,255,255,0.2); border: none; color: white; font-size: 2rem; cursor: pointer; transition: var(--transition); width: 45px; height: 45px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-        .close-modal:hover { background: rgba(255,255,255,0.3); transform: rotate(90deg) scale(1.1); }
-        .modal-body { flex: 1; padding: 0; overflow: hidden; }
-        .pdf-viewer { width: 100%; height: 100%; border: none; border-radius: 0 0 20px 20px; }
+        .social-btn {
+            width: 40px; height: 40px; border-radius: 10px;
+            background: var(--card-bg); color: var(--text-main);
+            display: flex; align-items: center; justify-content: center;
+            transition: 0.2s; border: 1px solid var(--glass-border);
+            text-decoration: none;
+        }
+        .social-btn:hover { background: var(--primary); color: white; transform: translateY(-3px); }
+
+        .footer-bottom {
+            text-align: center;
+            padding-top: 2rem;
+            border-top: 1px solid var(--glass-border);
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        @media(max-width: 768px) {
+            .header-controls { width: 100%; justify-content: flex-end; }
+            .search-container { display: block; width: 100%; max-width: 100%; margin: 1rem 0; }
+            .nav-content { flex-wrap: wrap; gap: 1rem; }
+            .hero h1 { font-size: 2.5rem; }
+        }
     </style>
 </head>
 <body>
-    <!-- Header -->
-    <header>
+
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+
+    <!-- Navigation -->
+    <nav>
         <div class="container">
-            <div class="header-content">
-                <div class="logo">
-                    <div class="logo-icon">
-                        <i class="fas fa-graduation-cap"></i>
+            <div class="nav-content">
+                <a href="#" class="logo" onclick="resetApp(); return false;">
+                    <div class="logo-icon"><i class="fa-solid fa-graduation-cap"></i></div>
+                    <div class="logo-text">HIS Portal</div>
+                </a>
+
+                <div class="header-controls">
+                    <div class="search-container">
+                        <i class="fa-solid fa-search search-icon"></i>
+                        <input type="text" class="search-input" id="searchInput" placeholder="Search current files...">
                     </div>
-                    <div class="logo-text">
-                        <h1>HIS <span>University</span></h1>
-                    </div>
-                </div>
-                <div class="action-buttons">
-                    <button class="action-btn" onclick="refreshContent()">
-                        <i class="fas fa-sync-alt"></i> Refresh Drive
+                    
+                    <!-- Dark Mode Toggle -->
+                    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()">
+                        <i class="fa-solid fa-moon"></i>
                     </button>
                 </div>
             </div>
         </div>
-    </header>
+    </nav>
 
-    <!-- Hero Section -->
+    <!-- Hero -->
     <section class="hero">
         <div class="container">
-            <h2>Question Bank Platform</h2>
-            <p>Access past examination papers and study materials for all specialties and academic years at HIS University</p>
+            <h1>Academic <span>Resources</span></h1>
+            <p>Access study materials, exam papers, and course content instantly.</p>
         </div>
     </section>
 
     <!-- Main Content -->
-    <section class="main-content">
-        <div class="container">
-            <div class="content-wrapper">
-                <div class="breadcrumb" id="breadcrumb">
-                    <a href="#" id="home-link">Home</a>
-                </div>
+    <main class="container">
+        <div class="main-layout">
+            <!-- Breadcrumbs -->
+            <div class="breadcrumb-bar" id="breadcrumbs"></div>
 
-                <div id="content-area">
-                    <!-- Content will be dynamically loaded here -->
-                </div>
-            </div>
+            <!-- Content Area -->
+            <div id="contentArea"></div>
         </div>
-    </section>
+    </main>
 
-    <!-- PDF Viewer Modal -->
-    <div class="modal" id="pdf-modal">
-        <div class="modal-content">
+    <!-- PDF Modal with Download Button -->
+    <div class="modal-overlay" id="pdfModal">
+        <div class="modal-card">
             <div class="modal-header">
-                <h3 id="pdf-title">PDF Viewer</h3>
-                <button class="close-modal" id="close-modal">&times;</button>
+                <div class="modal-title">
+                    <i class="fa-solid fa-file-pdf" style="color: var(--accent)"></i>
+                    <span id="pdfTitle">Document Viewer</span>
+                </div>
+                <div class="modal-actions">
+                    <a href="#" id="downloadBtn" class="download-btn" target="_blank">
+                        <i class="fa-solid fa-download"></i> Download PDF
+                    </a>
+                    <button class="close-btn" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button>
+                </div>
             </div>
             <div class="modal-body">
-                <iframe class="pdf-viewer" id="pdf-viewer" frameborder="0"></iframe>
+                <iframe class="pdf-frame" id="pdfFrame"></iframe>
             </div>
         </div>
     </div>
 
-    <!-- Footer -->
+    <!-- Information Section (Footer) -->
     <footer>
         <div class="container">
             <div class="footer-content">
+                <!-- Section 1: About -->
                 <div class="footer-section">
                     <h3>About HIS University</h3>
-                    <p>Higher Institute of Sciences is committed to providing quality education and resources to our students.</p>
+                    <p>Higher Institute of Sciences is committed to providing quality education and resources to our students. This platform ensures seamless access to all academic materials.</p>
                     <div class="social-links">
-                        <a href="#"><i class="fab fa-facebook-f"></i></a>
-                        <a href="#"><i class="fab fa-twitter"></i></a>
-                        <a href="#"><i class="fab fa-instagram"></i></a>
-                        <a href="#"><i class="fab fa-linkedin-in"></i></a>
+                        <a href="#" class="social-btn"><i class="fa-brands fa-facebook-f"></i></a>
+                        <a href="#" class="social-btn"><i class="fa-brands fa-twitter"></i></a>
+                        <a href="#" class="social-btn"><i class="fa-brands fa-instagram"></i></a>
+                        <a href="#" class="social-btn"><i class="fa-brands fa-linkedin-in"></i></a>
                     </div>
                 </div>
+
+                <!-- Section 2: Quick Links -->
                 <div class="footer-section">
                     <h3>Quick Links</h3>
-                    <ul>
-                        <li><a href="#" id="nav-home"><i class="fas fa-home"></i> Home</a></li>
-                        <li><a href="#" onclick="refreshContent()"><i class="fas fa-sync-alt"></i> Refresh Content</a></li>
-                        <li><a href="#"><i class="fas fa-calendar-alt"></i> Academic Calendar</a></li>
-                        <li><a href="#"><i class="fas fa-user-graduate"></i> Student Portal</a></li>
+                    <ul class="footer-links">
+                        <li><a href="#" onclick="resetApp(); return false;"><i class="fa-solid fa-house"></i> Home</a></li>
+                        <li><a href="#" onclick="loadRootFolder(); return false;"><i class="fa-solid fa-rotate"></i> Refresh Content</a></li>
+                        <li><a href="#"><i class="fa-solid fa-calendar-days"></i> Academic Calendar</a></li>
+                        <li><a href="#"><i class="fa-solid fa-user-graduate"></i> Student Portal</a></li>
                     </ul>
                 </div>
+
+                <!-- Section 3: Contact -->
                 <div class="footer-section">
                     <h3>Contact Info</h3>
-                    <p><i class="fas fa-map-marker-alt"></i> 123 University Avenue, City</p>
-                    <p><i class="fas fa-phone"></i> +1 234 567 8900</p>
-                    <p><i class="fas fa-envelope"></i> info@hisuniversity.edu</p>
+                    <ul class="footer-links">
+                        <li><a href="#"><i class="fa-solid fa-location-dot"></i> Bordj El Kifan, Ben Redoane</a></li>
+                        <li><a href="#"><i class="fa-solid fa-phone"></i> +1 234 567 8900</a></li>
+                        <li><a href="#"><i class="fa-solid fa-envelope"></i> info@hisuniversity.edu</a></li>
+                    </ul>
                 </div>
             </div>
+            
             <div class="footer-bottom">
-                <p>&copy; 2023 HIS University. All Rights Reserved. | Question Bank Platform v2.0</p>
+                <p>© 2025 Higher Institute of Sciences. Secure Academic Portal.</p>
             </div>
         </div>
     </footer>
 
     <script>
-    /*******************************
- * Google Drive API v3 fetch
- * Works with public folders using API key
- *******************************/
+        // --- CONFIGURATION ---
+        const ROOT_FOLDER_ID = '1idLjcw5YSWSnu5cddFjZkT3yfLbgsHh_';
+        const API_KEY = 'AIzaSyAeAqFgi2kDSyOuHqii3IpBs_fjCKrGcYc';
 
-const ROOT_FOLDER_ID = '1idLjcw5YSWSnu5cddFjZkT3yfLbgsHh_'; // your root folder ID
-const API_KEY = 'AIzaSyAeAqFgi2kDSyOuHqii3IpBs_fjCKrGcYc'; // your API key
+        // --- STATE ---
+        let currentPath = [];
+        let currentFiles = [];
 
-const contentArea = document.getElementById('content-area');
-const breadcrumbEl = document.getElementById('breadcrumb');
-const pdfModal = document.getElementById('pdf-modal');
-const pdfViewer = document.getElementById('pdf-viewer');
-const pdfTitle = document.getElementById('pdf-title');
-const closeModalBtn = document.getElementById('close-modal');
+        // --- DOM ELEMENTS ---
+        const contentArea = document.getElementById('contentArea');
+        const breadcrumbEl = document.getElementById('breadcrumbs');
+        const modal = document.getElementById('pdfModal');
+        const pdfFrame = document.getElementById('pdfFrame');
+        const pdfTitle = document.getElementById('pdfTitle');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const searchInput = document.getElementById('searchInput');
+        const themeToggle = document.getElementById('themeToggle');
 
-let currentPath = [];
+        // --- THEME LOGIC ---
+        function toggleTheme() {
+            document.body.classList.toggle('dark-mode');
+            const isDark = document.body.classList.contains('dark-mode');
+            themeToggle.innerHTML = isDark ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
+            localStorage.setItem('his_theme', isDark ? 'dark' : 'light');
+        }
 
-// ===== Helpers =====
-function showLoading(title='Loading', sub='') {
-    contentArea.innerHTML = `
-        <div class="loading">
-            <div class="spinner"></div>
-            <div class="loading-text">${title}</div>
-            <div class="loading-subtext">${sub}</div>
-        </div>
-    `;
-}
+        // Initialize Theme
+        const savedTheme = localStorage.getItem('his_theme');
+        if (savedTheme === 'dark') {
+            document.body.classList.add('dark-mode');
+            themeToggle.innerHTML = '<i class="fa-solid fa-sun"></i>';
+        }
 
-function escapeHtml(s) { 
-    return String(s).replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); 
-}
+        // --- HELPER FUNCTIONS ---
+        function escapeHtml(text) {
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
 
-// ===== Breadcrumb =====
-function updateBreadcrumb() {
-    const parts = ['<a href="#" id="home-link">Home</a>'];
-    currentPath.forEach((p,i) => {
-        parts.push(`<a href="#" data-index="${i}">${escapeHtml(p.name)}</a>`);
-    });
-    breadcrumbEl.innerHTML = parts.join('');
-    Array.from(breadcrumbEl.querySelectorAll('a[data-index]')).forEach(a=>{
-        a.addEventListener('click', e=>{
-            e.preventDefault();
-            const idx = Number(e.currentTarget.dataset.index);
-            currentPath = currentPath.slice(0, idx+1);
-            loadFolder(currentPath[currentPath.length-1].id, currentPath[currentPath.length-1].name, true);
+        function showLoading() {
+            contentArea.innerHTML = `
+                <div class="loading-state">
+                    <div class="spinner-box">
+                        <div class="spinner-circle"></div>
+                        <div class="spinner-circle"></div>
+                        <div class="spinner-circle"></div>
+                    </div>
+                    <h3>Fetching Content...</h3>
+                    <p style="color: var(--text-light)">Connecting to University Drive</p>
+                </div>`;
+        }
+
+        // --- BREADCRUMB LOGIC ---
+        function updateBreadcrumb() {
+            const parts = [`<div class="crumb ${currentPath.length === 0 ? 'active' : ''}" onclick="resetApp()">Home</div>`];
+            currentPath.forEach((item, index) => {
+                parts.push(`<div class="crumb-divider"><i class="fa-solid fa-chevron-right"></i></div>`);
+                const isActive = index === currentPath.length - 1;
+                parts.push(`<div class="crumb ${isActive ? 'active' : ''}" onclick="navigateToIndex(${index})">${escapeHtml(item.name)}</div>`);
+            });
+            breadcrumbEl.innerHTML = parts.join('');
+        }
+
+        function navigateToIndex(index) {
+            const target = currentPath[index];
+            currentPath = currentPath.slice(0, index + 1);
+            loadFolder(target.id, target.name, true);
+        }
+
+        function resetApp() {
+            currentPath = [];
+            loadRootFolder();
+        }
+
+        // --- DRIVE API ---
+        async function listFolder(folderId) {
+            try {
+                const url = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+trashed=false&key=${API_KEY}&fields=files(id,name,mimeType)&orderBy=folder,name`;
+                const res = await fetch(url);
+                const data = await res.json();
+                if (data.error) throw new Error(data.error.message);
+                return data.files || [];
+            } catch (err) {
+                console.error(err);
+                contentArea.innerHTML = `<div class="empty-state"><h3>Error Loading</h3><p>${err.message}</p></div>`;
+                return [];
+            }
+        }
+
+        // --- RENDER LOGIC ---
+        function renderGrid(items) {
+            currentFiles = items;
+            if (items.length === 0) {
+                contentArea.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon"><i class="fa-regular fa-folder-open"></i></div>
+                        <h3>It's empty here</h3>
+                        <p>No files found in this folder.</p>
+                    </div>`;
+                return;
+            }
+
+            let html = '<div class="grid-container">';
+            items.forEach((item, index) => {
+                const isFolder = item.mimeType === 'application/vnd.google-apps.folder';
+                const delay = index * 0.05;
+                if (isFolder) {
+                    html += `
+                        <div class="card" style="animation-delay: ${delay}s" onclick="loadFolder('${item.id}', '${escapeHtml(item.name)}')">
+                            <div class="folder-visual"></div>
+                            <div class="card-title" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
+                            <div class="card-subtitle">Folder Collection</div>
+                            <div class="card-action"><div class="btn-icon"><i class="fa-solid fa-arrow-right"></i></div></div>
+                        </div>`;
+                } else {
+                    html += `
+                        <div class="card" style="animation-delay: ${delay}s" onclick="openFile('${item.id}', '${escapeHtml(item.name)}')">
+                            <div class="file-visual"><i class="fa-solid fa-file-pdf"></i></div>
+                            <div class="card-title" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
+                            <div class="card-subtitle">PDF Document</div>
+                            <div class="card-action"><div class="btn-icon"><i class="fa-solid fa-eye"></i></div></div>
+                        </div>`;
+                }
+            });
+            html += '</div>';
+            contentArea.innerHTML = html;
+        }
+
+        // --- NAVIGATION & LOADING ---
+        async function loadRootFolder() {
+            showLoading();
+            updateBreadcrumb();
+            const files = await listFolder(ROOT_FOLDER_ID);
+            renderGrid(files);
+        }
+
+        async function loadFolder(folderId, folderName, isBackNav = false) {
+            showLoading();
+            if (!isBackNav) currentPath.push({ id: folderId, name: folderName });
+            updateBreadcrumb();
+            searchInput.value = ''; 
+            const files = await listFolder(folderId);
+            renderGrid(files);
+        }
+
+        // --- PDF VIEWER & DOWNLOADER ---
+        function openFile(fileId, fileName) {
+            const previewUrl = `https://drive.google.com/file/d/${fileId}/preview`;
+            const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+            
+            pdfFrame.src = previewUrl;
+            pdfTitle.textContent = fileName;
+            downloadBtn.href = downloadUrl;
+            
+            modal.classList.add('active');
+        }
+
+        function closeModal() {
+            modal.classList.remove('active');
+            pdfFrame.src = '';
+        }
+
+        // --- SEARCH FUNCTIONALITY ---
+        searchInput.addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            if (!currentFiles || currentFiles.length === 0) return;
+
+            const filtered = currentFiles.filter(item => item.name.toLowerCase().includes(term));
+            
+            if (filtered.length === 0) {
+                contentArea.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon"><i class="fa-solid fa-search"></i></div>
+                        <h3>No matches found</h3>
+                        <p>Try a different search term.</p>
+                    </div>`;
+            } else {
+                let html = '<div class="grid-container">';
+                filtered.forEach((item, index) => {
+                    const isFolder = item.mimeType === 'application/vnd.google-apps.folder';
+                    if (isFolder) {
+                        html += `
+                            <div class="card" onclick="loadFolder('${item.id}', '${escapeHtml(item.name)}')">
+                                <div class="folder-visual"></div>
+                                <div class="card-title">${escapeHtml(item.name)}</div>
+                                <div class="card-subtitle">Folder Collection</div>
+                                <div class="card-action"><div class="btn-icon"><i class="fa-solid fa-arrow-right"></i></div></div>
+                            </div>`;
+                    } else {
+                        html += `
+                            <div class="card" onclick="openFile('${item.id}', '${escapeHtml(item.name)}')">
+                                <div class="file-visual"><i class="fa-solid fa-file-pdf"></i></div>
+                                <div class="card-title">${escapeHtml(item.name)}</div>
+                                <div class="card-subtitle">PDF Document</div>
+                                <div class="card-action"><div class="btn-icon"><i class="fa-solid fa-eye"></i></div></div>
+                            </div>`;
+                    }
+                });
+                html += '</div>';
+                contentArea.innerHTML = html;
+            }
         });
-    });
-    document.getElementById('home-link').addEventListener('click', e=>{
-        e.preventDefault();
-        currentPath = [];
+
         loadRootFolder();
-    });
-}
-
-// ===== Google Drive API fetch =====
-async function listFolder(folderId) {
-    const url = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents&key=${API_KEY}&fields=files(id,name,mimeType)`;
-    const res = await fetch(url);
-    const data = await res.json();
-    return data.files || [];
-}
-
-// ===== Display Folders & Files =====
-function displayFolders(folders) {
-    let html = ['<div class="folders-grid">'];
-    if (folders.length === 0) html.push('<div class="empty-state"><i class="fas fa-folder-open"></i><h3>No folders</h3><p>This folder is empty.</p></div>');
-    folders.forEach(f=>{
-        html.push(`
-            <div class="folder-card" data-id="${f.id}" data-name="${escapeHtml(f.name)}">
-                <div class="folder-icon"><i class="fas fa-folder"></i></div>
-                <div class="folder-info">
-                    <h3>${escapeHtml(f.name)}</h3>
-                    <p>Open folder</p>
-                </div>
-            </div>
-        `);
-    });
-    html.push('</div>');
-    contentArea.innerHTML = html.join('');
-
-    Array.from(contentArea.querySelectorAll('.folder-card')).forEach(card=>{
-        card.addEventListener('click', ()=>{
-            loadFolder(card.dataset.id, card.dataset.name);
-        });
-    });
-}
-
-function displayFiles(files) {
-    let html = ['<div class="files-grid">'];
-    if (files.length === 0) html.push('<div class="empty-state"><i class="fas fa-file"></i><h3>No files</h3><p>This folder has no files.</p></div>');
-    files.forEach(f=>{
-        html.push(`
-            <div class="file-card" data-id="${f.id}" data-name="${escapeHtml(f.name)}">
-                <div class="file-icon"><i class="fas fa-file-pdf"></i></div>
-                <div class="file-info">
-                    <h4>${escapeHtml(f.name)}</h4>
-                    <p>Click to open</p>
-                </div>
-            </div>
-        `);
-    });
-    html.push('</div>');
-    contentArea.innerHTML = html.join('');
-
-    Array.from(contentArea.querySelectorAll('.file-card')).forEach(card=>{
-        card.addEventListener('click', ()=>{
-            openFile(card.dataset.id, card.dataset.name);
-        });
-    });
-}
-
-// ===== Load Folders =====
-async function loadRootFolder() {
-    showLoading('Connecting to Google Drive','Reading folder structure...');
-    updateBreadcrumb();
-    const files = await listFolder(ROOT_FOLDER_ID);
-    const folders = files.filter(f=>f.mimeType==='application/vnd.google-apps.folder');
-    const pdfs = files.filter(f=>f.mimeType==='application/pdf');
-    if (folders.length) displayFolders(folders);
-    else displayFiles(pdfs);
-}
-
-async function loadFolder(folderId, folderName, fromBreadcrumb=false) {
-    showLoading(`Loading ${folderName}`, 'Reading folder contents...');
-    if (!fromBreadcrumb) currentPath.push({id:folderId,name:folderName});
-    updateBreadcrumb();
-    const files = await listFolder(folderId);
-    const folders = files.filter(f=>f.mimeType==='application/vnd.google-apps.folder');
-    const pdfs = files.filter(f=>f.mimeType==='application/pdf');
-    if (folders.length) displayFolders(folders);
-    else displayFiles(pdfs);
-}
-
-// ===== Open PDF =====
-function openFile(fileId, fileName) {
-    const url = `https://drive.google.com/uc?export=download&id=${fileId}`;
-    pdfViewer.src = url;
-    pdfTitle.textContent = fileName;
-    pdfModal.style.display = 'block';
-}
-
-closeModalBtn.addEventListener('click', ()=>{
-    pdfModal.style.display = 'none';
-    pdfViewer.src = '';
-});
-
-// ===== Refresh =====
-function refreshContent() {
-    if (currentPath.length===0) loadRootFolder();
-    else loadFolder(currentPath[currentPath.length-1].id, currentPath[currentPath.length-1].name, true);
-}
-
-// ===== Initial Load =====
-loadRootFolder();
 
     </script>
 </body>
