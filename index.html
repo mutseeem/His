@@ -200,299 +200,160 @@ may break if Google changes it. It is the best frontend-only approach available.
 
     <script>
     /*******************************
-     * FRONTEND-ONLY Google Drive reader
-     * Strategy: fetch the public Drive folder page and extract the JSON
-     * Drive uses inside its HTML (AF_initDataCallback / viewerData). We parse
-     * that JSON to build folders/files list.
-     *
-     * Limitations:
-     *  - This scrapes Google's public HTML, fragile to changes.
-     *  - Works for public folders only ("Anyone with the link can view").
-     *  - No API keys, no backend. Dynamic: any change in Drive shows after reload.
-     *******************************/
+ * Google Drive API v3 fetch
+ * Works with public folders using API key
+ *******************************/
 
-    // === CONFIGURE HERE ===
-    const ROOT_FOLDER = '1idLjcw5YSWSnu5cddFjZkT3yfLbgsHh_?usp=sharing_'; // <-- set your folder ID
+const ROOT_FOLDER_ID = '1idLjcw5YSWSnu5cddFjZkT3yfLbgsHh_'; // your root folder ID
+const API_KEY = 'AIzaSyAeAqFgi2kDSyOuHqii3IpBs_fjCKrGcYc'; // your API key
 
-    // DOM refs
-    const contentArea = document.getElementById('content-area');
-    const breadcrumbEl = document.getElementById('breadcrumb');
-    const pdfModal = document.getElementById('pdf-modal');
-    const pdfViewer = document.getElementById('pdf-viewer');
-    const pdfTitle = document.getElementById('pdf-title');
-    const closeModalBtn = document.getElementById('close-modal');
+const contentArea = document.getElementById('content-area');
+const breadcrumbEl = document.getElementById('breadcrumb');
+const pdfModal = document.getElementById('pdf-modal');
+const pdfViewer = document.getElementById('pdf-viewer');
+const pdfTitle = document.getElementById('pdf-title');
+const closeModalBtn = document.getElementById('close-modal');
 
-    let currentPath = [];
+let currentPath = [];
 
-    // Utilities - show loading
-    function showLoading(title = 'Loading', sub = '') {
-        contentArea.innerHTML = `
-            <div class="loading">
-                <div class="spinner"></div>
-                <div class="loading-text">${title}</div>
-                <div class="loading-subtext">${sub}</div>
-            </div>
-        `;
-    }
+// ===== Helpers =====
+function showLoading(title='Loading', sub='') {
+    contentArea.innerHTML = `
+        <div class="loading">
+            <div class="spinner"></div>
+            <div class="loading-text">${title}</div>
+            <div class="loading-subtext">${sub}</div>
+        </div>
+    `;
+}
 
-    function updateBreadcrumb() {
-        const parts = ['<a href="#" id="home-link">Home</a>'];
-        currentPath.forEach((p, i) => {
-            parts.push(`<a href=\"#\" data-index=\"${i}\">${p.name}</a>`);
-        });
-        breadcrumbEl.innerHTML = parts.join('');
-        // add click handlers
-        Array.from(breadcrumbEl.querySelectorAll('a[data-index]')).forEach(a => {
-            a.addEventListener('click', (e) => {
-                e.preventDefault();
-                const idx = Number(e.currentTarget.dataset.index);
-                // go to that index - pop after
-                currentPath = currentPath.slice(0, idx + 1);
-                loadFolder(currentPath[currentPath.length - 1].id, currentPath[currentPath.length - 1].name, true);
-            });
-        });
-        document.getElementById('home-link').addEventListener('click', (e) => {
-            e.preventDefault();
-            currentPath = [];
-            loadRootFolder();
-        });
-    }
+function escapeHtml(s) { 
+    return String(s).replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); 
+}
 
-    // Extract JSON payloads from Drive folder HTML.
-    // We'll try several regex patterns because Google uses different wrappers.
-    function extractJsonObjectsFromHtml(html) {
-        const results = [];
-
-        // Pattern 1: AF_initDataCallback({...});   -> find the data: ... part
-        const afRegex = /AF_initDataCallback\((\{[\s\S]*?\})\);/g;
-        let m;
-        while ((m = afRegex.exec(html)) !== null) {
-            try {
-                const obj = JSON.parse(m[1].replace(/\n/g, ''));
-                if (obj && obj.data) results.push(obj.data);
-            } catch (e) {
-                // ignore parse errors
-            }
-        }
-
-        // Pattern 2: window.viewerData = ...; or window["viewerData"] = ...;
-        const viewerRegex = /window\.viewerData\s*=\s*(\[.*?\]);/s;
-        const vMatch = html.match(viewerRegex);
-        if (vMatch) {
-            try {
-                results.push(JSON.parse(vMatch[1]));
-            } catch (e) {}
-        }
-
-        // Pattern 3: look for 'window["_DRIVE_ivd"] = ' encoded string - attempt decode
-        const ivdRegex = /window\['?_?DRIVE_ivd'?\]\s*=\s*'([^']*)'/;
-        const ivdMatch = html.match(ivdRegex);
-        if (ivdMatch) {
-            try {
-                // the string is often escaped; replace \\" with " then parse
-                const decoded = ivdMatch[1].replace(/\\\"/g, '\"');
-                results.push(JSON.parse(decoded));
-            } catch (e) {}
-        }
-
-        return results;
-    }
-
-    // Normalize Drive data to {folders:[], files:[]}
-    function parseDriveDataObjects(objs) {
-        // Google structures are complex; we try to find arrays that look like file entries.
-        // We'll search nested arrays for items that contain mimeType-like info or file ids (strings of length 28+)
-
-        const folders = [];
-        const files = [];
-
-        function recurse(node) {
-            if (!node) return;
-            if (Array.isArray(node)) {
-                // heuristic: items that have a 2nd element which is an object with mimeType or link
-                node.forEach(item => recurse(item));
-            } else if (typeof node === 'object') {
-                for (const k in node) recurse(node[k]);
-            } else if (typeof node === 'string') {
-                // no-op
-            }
-        }
-
-        // Best-effort approach: scan objects for entries shaped like [id, name, mimeType]
-        function scanForEntries(o) {
-            if (!o) return;
-            if (Array.isArray(o)) {
-                // look for arrays where one element looks like file id (length >= 20 and contains letters/numbers/_-)
-                o.forEach(item => {
-                    if (Array.isArray(item) && item.length >= 2) {
-                        const maybeId = item[0];
-                        const name = item[1];
-                        if (typeof maybeId === 'string' && maybeId.length >= 20 && typeof name === 'string') {
-                            // decide file/folder by file extension in name or presence of 'folder' word
-                            if (/\.(pdf|docx?|pptx?|xlsx?)$/i.test(name)) {
-                                files.push({ id: maybeId, name });
-                            } else {
-                                // add as folder candidate
-                                folders.push({ id: maybeId, name });
-                            }
-                        }
-                    }
-                    // recurse
-                    scanForEntries(item);
-                });
-            } else if (typeof o === 'object') {
-                Object.values(o).forEach(v => scanForEntries(v));
-            }
-        }
-
-        objs.forEach(scanForEntries);
-
-        // Deduplicate by id
-        const unique = (arr) => arr.filter((a, i) => arr.findIndex(x => x.id === a.id) === i);
-
-        return { folders: unique(folders), files: unique(files) };
-    }
-
-    // Fetch folder page and try to extract folder/file info
-    async function listDrive(folderId) {
-        const url = `https://drive.google.com/drive/folders/${folderId}`;
-        const res = await fetch(url).then(r => r.text());
-        const objs = extractJsonObjectsFromHtml(res);
-        const parsed = parseDriveDataObjects(objs);
-
-        // Fallback: if parse found nothing, try the embed XML feed
-        if (parsed.folders.length === 0 && parsed.files.length === 0) {
-            // try atom feed
-            try {
-                const feedUrl = `https://drive.google.com/feeds/?id=${folderId}&output=atom`;
-                const feedText = await fetch(feedUrl).then(r => r.text());
-                // parse simple <entry><title>name</title><link href="...id=FILEID"/></entry>
-                const parser = new DOMParser();
-                const xml = parser.parseFromString(feedText, 'application/xml');
-                const entries = Array.from(xml.querySelectorAll('entry'));
-                const files = entries.map(e => {
-                    const title = e.querySelector('title') ? e.querySelector('title').textContent : 'file';
-                    const link = e.querySelector('link');
-                    let fid = null;
-                    if (link) {
-                        const href = link.getAttribute('href') || '';
-                        const m = href.match(/id=([a-zA-Z0-9_-]+)/);
-                        if (m) fid = m[1];
-                    }
-                    return fid ? { id: fid, name: title } : null;
-                }).filter(Boolean);
-                return { folders: [], files };
-            } catch (e) {
-                return { folders: [], files: [] };
-            }
-        }
-
-        return parsed;
-    }
-
-    // Render functions
-    function displayFolders(folders, title) {
-        const html = [];
-        html.push('<div class="folders-grid">');
-        if (folders.length === 0) html.push('<div class="empty-state"><i class="fas fa-folder-open"></i><h3>No folders</h3><p>This folder is empty.</p></div>');
-        folders.forEach(f => {
-            html.push(`
-                <div class="folder-card" data-id="${f.id}" data-name="${escapeHtml(f.name)}">
-                    <div class="folder-icon"><i class="fas fa-folder"></i></div>
-                    <div class="folder-info">
-                        <h3>${escapeHtml(f.name)}</h3>
-                        <p>Open folder</p>
-                    </div>
-                </div>
-            `);
-        });
-        html.push('</div>');
-        contentArea.innerHTML = html.join('');
-
-        // attach click handlers
-        Array.from(contentArea.querySelectorAll('.folder-card')).forEach(card => {
-            card.addEventListener('click', () => {
-                const id = card.dataset.id;
-                const name = card.dataset.name;
-                loadFolder(id, name);
-            });
-        });
-    }
-
-    function displayFiles(files, folderName) {
-        const html = [];
-        html.push('<div class="files-grid">');
-        if (files.length === 0) html.push('<div class="empty-state"><i class="fas fa-file"></i><h3>No files</h3><p>This folder has no files.</p></div>');
-        files.forEach(f => {
-            html.push(`
-                <div class="file-card" data-id="${f.id}" data-name="${escapeHtml(f.name)}">
-                    <div class="file-icon"><i class="fas fa-file-pdf"></i></div>
-                    <div class="file-info">
-                        <h4>${escapeHtml(f.name)}</h4>
-                        <p>Click to open</p>
-                    </div>
-                </div>
-            `);
-        });
-        html.push('</div>');
-        contentArea.innerHTML = html.join('');
-
-        Array.from(contentArea.querySelectorAll('.file-card')).forEach(card => {
-            card.addEventListener('click', () => {
-                const id = card.dataset.id;
-                const name = card.dataset.name;
-                openFile(id, name);
-            });
-        });
-    }
-
-    function escapeHtml(s) { return String(s).replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-
-    async function loadRootFolder() {
-        showLoading('Connecting to Google Drive', 'Reading folder structure...');
-        currentPath = [];
-        updateBreadcrumb();
-        const data = await listDrive(ROOT_FOLDER);
-        // prefer folders list; if none, show files
-        if (data.folders && data.folders.length > 0) {
-            displayFolders(data.folders.map(f => ({ id: f.id, name: f.name })), 'Root');
-        } else {
-            displayFiles((data.files || []).map(f => ({ id: f.id, name: f.name })), 'Root');
-        }
-    }
-
-    async function loadFolder(folderId, folderName, fromBreadcrumb = false) {
-        showLoading(`Loading ${folderName}`, 'Reading folder contents...');
-        if (!fromBreadcrumb) currentPath.push({ id: folderId, name: folderName });
-        updateBreadcrumb();
-        const data = await listDrive(folderId);
-        if (data.folders && data.folders.length > 0) {
-            displayFolders(data.folders.map(f => ({ id: f.id, name: f.name })), folderName);
-        } else {
-            displayFiles((data.files || []).map(f => ({ id: f.id, name: f.name })), folderName);
-        }
-    }
-
-    function openFile(fileId, fileName) {
-        // direct download/view link
-        const url = `https://drive.google.com/uc?export=download&id=${fileId}`;
-        pdfViewer.src = url;
-        pdfTitle.textContent = fileName;
-        pdfModal.style.display = 'block';
-    }
-
-    closeModalBtn.addEventListener('click', () => {
-        pdfModal.style.display = 'none';
-        pdfViewer.src = '';
+// ===== Breadcrumb =====
+function updateBreadcrumb() {
+    const parts = ['<a href="#" id="home-link">Home</a>'];
+    currentPath.forEach((p,i) => {
+        parts.push(`<a href="#" data-index="${i}">${escapeHtml(p.name)}</a>`);
     });
+    breadcrumbEl.innerHTML = parts.join('');
+    Array.from(breadcrumbEl.querySelectorAll('a[data-index]')).forEach(a=>{
+        a.addEventListener('click', e=>{
+            e.preventDefault();
+            const idx = Number(e.currentTarget.dataset.index);
+            currentPath = currentPath.slice(0, idx+1);
+            loadFolder(currentPath[currentPath.length-1].id, currentPath[currentPath.length-1].name, true);
+        });
+    });
+    document.getElementById('home-link').addEventListener('click', e=>{
+        e.preventDefault();
+        currentPath = [];
+        loadRootFolder();
+    });
+}
 
-    function refreshContent() {
-        if (currentPath.length === 0) loadRootFolder();
-        else loadFolder(currentPath[currentPath.length - 1].id, currentPath[currentPath.length - 1].name, true);
-    }
+// ===== Google Drive API fetch =====
+async function listFolder(folderId) {
+    const url = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents&key=${API_KEY}&fields=files(id,name,mimeType)`;
+    const res = await fetch(url);
+    const data = await res.json();
+    return data.files || [];
+}
 
-    // initial load
-    loadRootFolder();
+// ===== Display Folders & Files =====
+function displayFolders(folders) {
+    let html = ['<div class="folders-grid">'];
+    if (folders.length === 0) html.push('<div class="empty-state"><i class="fas fa-folder-open"></i><h3>No folders</h3><p>This folder is empty.</p></div>');
+    folders.forEach(f=>{
+        html.push(`
+            <div class="folder-card" data-id="${f.id}" data-name="${escapeHtml(f.name)}">
+                <div class="folder-icon"><i class="fas fa-folder"></i></div>
+                <div class="folder-info">
+                    <h3>${escapeHtml(f.name)}</h3>
+                    <p>Open folder</p>
+                </div>
+            </div>
+        `);
+    });
+    html.push('</div>');
+    contentArea.innerHTML = html.join('');
+
+    Array.from(contentArea.querySelectorAll('.folder-card')).forEach(card=>{
+        card.addEventListener('click', ()=>{
+            loadFolder(card.dataset.id, card.dataset.name);
+        });
+    });
+}
+
+function displayFiles(files) {
+    let html = ['<div class="files-grid">'];
+    if (files.length === 0) html.push('<div class="empty-state"><i class="fas fa-file"></i><h3>No files</h3><p>This folder has no files.</p></div>');
+    files.forEach(f=>{
+        html.push(`
+            <div class="file-card" data-id="${f.id}" data-name="${escapeHtml(f.name)}">
+                <div class="file-icon"><i class="fas fa-file-pdf"></i></div>
+                <div class="file-info">
+                    <h4>${escapeHtml(f.name)}</h4>
+                    <p>Click to open</p>
+                </div>
+            </div>
+        `);
+    });
+    html.push('</div>');
+    contentArea.innerHTML = html.join('');
+
+    Array.from(contentArea.querySelectorAll('.file-card')).forEach(card=>{
+        card.addEventListener('click', ()=>{
+            openFile(card.dataset.id, card.dataset.name);
+        });
+    });
+}
+
+// ===== Load Folders =====
+async function loadRootFolder() {
+    showLoading('Connecting to Google Drive','Reading folder structure...');
+    updateBreadcrumb();
+    const files = await listFolder(ROOT_FOLDER_ID);
+    const folders = files.filter(f=>f.mimeType==='application/vnd.google-apps.folder');
+    const pdfs = files.filter(f=>f.mimeType==='application/pdf');
+    if (folders.length) displayFolders(folders);
+    else displayFiles(pdfs);
+}
+
+async function loadFolder(folderId, folderName, fromBreadcrumb=false) {
+    showLoading(`Loading ${folderName}`, 'Reading folder contents...');
+    if (!fromBreadcrumb) currentPath.push({id:folderId,name:folderName});
+    updateBreadcrumb();
+    const files = await listFolder(folderId);
+    const folders = files.filter(f=>f.mimeType==='application/vnd.google-apps.folder');
+    const pdfs = files.filter(f=>f.mimeType==='application/pdf');
+    if (folders.length) displayFolders(folders);
+    else displayFiles(pdfs);
+}
+
+// ===== Open PDF =====
+function openFile(fileId, fileName) {
+    const url = `https://drive.google.com/uc?export=download&id=${fileId}`;
+    pdfViewer.src = url;
+    pdfTitle.textContent = fileName;
+    pdfModal.style.display = 'block';
+}
+
+closeModalBtn.addEventListener('click', ()=>{
+    pdfModal.style.display = 'none';
+    pdfViewer.src = '';
+});
+
+// ===== Refresh =====
+function refreshContent() {
+    if (currentPath.length===0) loadRootFolder();
+    else loadFolder(currentPath[currentPath.length-1].id, currentPath[currentPath.length-1].name, true);
+}
+
+// ===== Initial Load =====
+loadRootFolder();
+
     </script>
 </body>
 </html>
